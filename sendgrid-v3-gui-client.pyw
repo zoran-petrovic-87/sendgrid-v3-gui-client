@@ -29,7 +29,7 @@ class AppFrame(tk.Frame):
         tk.Frame.__init__(self, root)
         self.is_content_html = tk.BooleanVar()
         self.is_send_bulk = tk.BooleanVar()
-        self.message = ''
+        self.message = ""
         self.initUI(root)
 
     def initUI(self, root):
@@ -76,8 +76,12 @@ class AppFrame(tk.Frame):
     def send(self):
         # Prepare input.
         emails_to_list = self.ui_emails_to.get().split(";")
-        emails_to = [{"email": x.strip()} for x in emails_to_list]
         emails_cc_list = self.ui_emails_cc.get().split(";") if len(self.ui_emails_cc.get()) > 0 else None
+
+        if emails_cc_list and (set(emails_to_list) & set(emails_cc_list)):
+            tk.messagebox.showerror("Error", "Recipient email cannot be listed in carbon copy recipients!")
+            return
+
         subject = self.ui_subject.get()
         content_type = "text/html" if self.is_content_html.get() else "text/plain"
         content = self.ui_content.get("1.0", "end-1c")
@@ -88,17 +92,19 @@ class AppFrame(tk.Frame):
             personalizations[0].update({"cc": [{"email": x.strip()} for x in emails_cc_list]})
 
         if self.is_send_bulk.get():
+            emails_to = [{"email": x.strip()} for x in emails_to_list]
             personalizations[0].update({"to": emails_to})
             self._send(subject, content_type, content, email_from, personalizations)
         else:
-            for email in emails_to:
-                personalizations[0].update({"to": [email]})
+            for email in emails_to_list:
+                personalizations[0].update({"to": [{"email": email.strip()}]})
                 self._send(subject, content_type, content, email_from, personalizations)
         tk.messagebox.showinfo("Done", self.message)
-        self.message = ''
+        self.message = ""
 
     def _send(self, subject, content_type, content, email_from, personalizations):
         try:
+            self.message += "\n" + str(personalizations[0]["to"])
             body = {
                 "personalizations": personalizations,
                 "from": {"email": email_from},
@@ -109,7 +115,6 @@ class AppFrame(tk.Frame):
             request = Request(url)
             request.add_header("Content-Type", "application/json; charset=utf-8")
             request.add_header("authorization", "Bearer {}".format(self.ui_api_key.get()))
-            print(json.dumps(body))
             json_data_as_bytes = json.dumps(body).encode("utf-8")  # Must be bytes
             request.add_header("Content-Length", len(json_data_as_bytes))
             response = urlopen(request, json_data_as_bytes)
